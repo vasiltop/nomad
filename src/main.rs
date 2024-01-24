@@ -4,11 +4,13 @@ use std::{
     io::{Read, Write},
     net::TcpStream,
 };
+use url::Url;
 
 use serde_json::{json, Value};
 
-struct Request<'a> {
-    ip: &'a str,
+struct Request {
+    url: Url,
+    kind: RequestKind,
 }
 
 struct Response {
@@ -16,24 +18,75 @@ struct Response {
     body: Value,
 }
 
-impl<'a> Request<'a> {
-    fn new(ip: &'a str) -> Self {
-        Request { ip }
+#[derive(Eq, PartialEq)]
+enum RequestKind {
+    Get,
+    Post,
+}
+
+impl RequestKind {
+    fn as_str(&self) -> &'static str {
+        match self {
+            RequestKind::Get => "GET",
+            RequestKind::Post => "POST",
+        }
+    }
+}
+
+impl Request {
+    fn new(ip: &str) -> Self {
+        let url = Url::parse(ip).unwrap();
+
+        Request {
+            url,
+            kind: RequestKind::Get,
+        }
     }
 
-    fn get(&self, json: Value) -> Result<Response, Box<dyn Error>> {
-        let mut stream = TcpStream::connect(self.ip)?;
+    fn get(&self) -> Result<Response, Box<dyn Error>> {
+        let response = self.send(None)?;
+
+        Ok(response)
+    }
+
+    fn post(&mut self, json: Value) -> Result<Response, Box<dyn Error>> {
+        self.kind = RequestKind::Post;
+        let response = self.send(Some(json))?;
+
+        Ok(response)
+    }
+
+    fn send(&self, json: Option<Value>) -> Result<Response, Box<dyn Error>> {
+        let mut stream = TcpStream::connect(self.url.socket_addrs(|| Some(8000))?.as_slice())?;
 
         let mut request = String::new();
 
-        request.push_str("POST /test HTTP/1.1\r\n");
-        request.push_str(&format!("Host: {} \r\n", self.ip));
+        request.push_str(&format!(
+            "{} {} HTTP/1.1\r\n",
+            self.kind.as_str(),
+            self.url.path()
+        ));
+
+        match self.url.host_str() {
+            Some(host) => request.push_str(&format!("Host: {} \r\n", host)),
+            None => panic!("no host"),
+        }
+
         request.push_str("Content-Type: application/json\r\n");
 
-        let body = &serde_json::to_string(&json)?;
-        let size = body.as_bytes().len();
+        let mut body = None;
+        let mut size = 0;
+
+        if self.kind == RequestKind::Post {
+            let s = serde_json::to_string(&json)?;
+            size = s.as_bytes().len();
+            body = Some(s);
+        }
+
         request.push_str(&format!("Content-Length: {}\r\n\r\n", size));
-        request.push_str(body);
+        if let Some(body) = body {
+            request.push_str(&body);
+        }
 
         stream.write_all(request.as_bytes())?;
         let buf = &mut [0; 1024];
@@ -91,9 +144,10 @@ impl<'a> Request<'a> {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let response = Request::new("127.0.0.1:8000").get(json!({"test": "hello"}))?;
+    let res = Request::new("http://localhost:8000/test").post(json!({"test": "adadsadasda"}))?;
+    //let res = Request::new("http://localhost:8000/test").get()?;
 
-    println!("{:?}", response.body);
+    println!("{}, {}", res.body, res.status);
 
     Ok(())
 }
