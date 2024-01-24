@@ -6,16 +6,16 @@ use std::{
 };
 use url::Url;
 
-use serde_json::{json, Value};
+use serde_json::Value;
 
-struct Request {
+pub struct Request {
     url: Url,
     kind: RequestKind,
 }
 
-struct Response {
-    status: u16,
-    body: Value,
+pub struct Response {
+    pub status: u16,
+    pub body: Value,
 }
 
 #[derive(Eq, PartialEq)]
@@ -34,7 +34,7 @@ impl RequestKind {
 }
 
 impl Request {
-    fn new(ip: &str) -> Self {
+    pub fn new(ip: &str) -> Self {
         let url = Url::parse(ip).unwrap();
 
         Request {
@@ -43,13 +43,13 @@ impl Request {
         }
     }
 
-    fn get(&self) -> Result<Response, Box<dyn Error>> {
+    pub fn get(&self) -> Result<Response, Box<dyn Error>> {
         let response = self.send(None)?;
 
         Ok(response)
     }
 
-    fn post(&mut self, json: Value) -> Result<Response, Box<dyn Error>> {
+    pub fn post(&mut self, json: Value) -> Result<Response, Box<dyn Error>> {
         self.kind = RequestKind::Post;
         let response = self.send(Some(json))?;
 
@@ -141,13 +141,4 @@ impl Request {
 
         (&data[..i], &data[i + 1..])
     }
-}
-
-fn main() -> Result<(), Box<dyn Error>> {
-    let res = Request::new("http://localhost:8000/test").post(json!({"test": "adadsadasda"}))?;
-    //let res = Request::new("http://localhost:8000/test").get()?;
-
-    println!("{}, {}", res.body, res.status);
-
-    Ok(())
 }
