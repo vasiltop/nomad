@@ -1,3 +1,5 @@
+pub mod error;
+
 use error::Error;
 use std::{
     io::{Read, Write},
@@ -7,11 +9,9 @@ use url::Url;
 
 use serde_json::Value;
 
-mod error;
-
 pub struct Request {
     url: Url,
-    kind: RequestKind,
+    kind: Method,
 }
 
 pub struct Response {
@@ -20,16 +20,16 @@ pub struct Response {
 }
 
 #[derive(Eq, PartialEq)]
-enum RequestKind {
+enum Method {
     Get,
     Post,
 }
 
-impl RequestKind {
+impl Method {
     fn as_str(&self) -> &'static str {
         match self {
-            RequestKind::Get => "GET",
-            RequestKind::Post => "POST",
+            Method::Get => "GET",
+            Method::Post => "POST",
         }
     }
 }
@@ -40,56 +40,50 @@ impl Request {
 
         Ok(Request {
             url,
-            kind: RequestKind::Get,
+            kind: Method::Get,
         })
     }
 
     pub fn get(&self) -> Result<Response, Error> {
-        let response = self.send(None)?;
-
-        Ok(response)
+        self.send(None)
     }
 
     pub fn post(&mut self, json: Value) -> Result<Response, Error> {
-        self.kind = RequestKind::Post;
-        let response = self.send(Some(json))?;
-
-        Ok(response)
+        self.kind = Method::Post;
+        self.send(Some(json))
     }
 
     fn send(&self, json: Option<Value>) -> Result<Response, Error> {
         let mut stream = TcpStream::connect(self.url.socket_addrs(|| Some(8000))?.as_slice())?;
 
-        let mut request = String::new();
-
-        request.push_str(&format!(
+        write!(
+            stream,
             "{} {} HTTP/1.1\r\n",
             self.kind.as_str(),
             self.url.path()
-        ));
+        )?;
 
         match self.url.host_str() {
-            Some(host) => request.push_str(&format!("Host: {} \r\n", host)),
+            Some(host) => write!(stream, "Host: {}\r\n", host)?,
             None => Err(Error::NoHostString)?,
         }
 
-        request.push_str("Content-Type: application/json\r\n");
+        write!(stream, "Content-Type: application/json\r\n")?;
 
         let mut body = None;
         let mut size = 0;
 
-        if self.kind == RequestKind::Post {
+        if self.kind == Method::Post {
             let s = serde_json::to_string(&json)?;
             size = s.as_bytes().len();
             body = Some(s);
         }
 
-        request.push_str(&format!("Content-Length: {}\r\n\r\n", size));
+        write!(stream, "Content-Length: {}\r\n\r\n", size)?;
         if let Some(body) = body {
-            request.push_str(&body);
+            write!(stream, "{}", body)?;
         }
 
-        stream.write_all(request.as_bytes())?;
         let buf = &mut [0; 1024];
         let mut data = Vec::new();
 
@@ -116,6 +110,7 @@ impl Request {
 
         let (value, mut slice) = Self::slice_until_byte(slice, b' ');
         let status: u16 = std::str::from_utf8(value)?.parse()?;
+
         slice = Self::slice_until_byte(slice, b'\n').1;
 
         while slice[1] != b'\n' {
@@ -124,7 +119,7 @@ impl Request {
 
         slice = Self::slice_until_byte(slice, b'\n').1;
 
-        let body: Value = serde_json::from_slice(slice)?;
+        let body = serde_json::from_slice(slice)?;
 
         Ok(Response { status, body })
     }
