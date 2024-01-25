@@ -1,6 +1,6 @@
 # Nomad
 
-A simple HTTP/1.1 client for sending GET and POST requests with JSON.
+A simple HTTP/1.1 client for sending GET and POST requests.
 
 ## Examples
 
