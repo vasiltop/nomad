@@ -1,12 +1,13 @@
-use core::panic;
+use error::Error;
 use std::{
-    error::Error,
     io::{Read, Write},
     net::TcpStream,
 };
 use url::Url;
 
 use serde_json::Value;
+
+mod error;
 
 pub struct Request {
     url: Url,
@@ -34,29 +35,29 @@ impl RequestKind {
 }
 
 impl Request {
-    pub fn new(ip: &str) -> Self {
-        let url = Url::parse(ip).unwrap();
+    pub fn new(ip: &str) -> Result<Self, Error> {
+        let url = Url::parse(ip)?;
 
-        Request {
+        Ok(Request {
             url,
             kind: RequestKind::Get,
-        }
+        })
     }
 
-    pub fn get(&self) -> Result<Response, Box<dyn Error>> {
+    pub fn get(&self) -> Result<Response, Error> {
         let response = self.send(None)?;
 
         Ok(response)
     }
 
-    pub fn post(&mut self, json: Value) -> Result<Response, Box<dyn Error>> {
+    pub fn post(&mut self, json: Value) -> Result<Response, Error> {
         self.kind = RequestKind::Post;
         let response = self.send(Some(json))?;
 
         Ok(response)
     }
 
-    fn send(&self, json: Option<Value>) -> Result<Response, Box<dyn Error>> {
+    fn send(&self, json: Option<Value>) -> Result<Response, Error> {
         let mut stream = TcpStream::connect(self.url.socket_addrs(|| Some(8000))?.as_slice())?;
 
         let mut request = String::new();
@@ -69,7 +70,7 @@ impl Request {
 
         match self.url.host_str() {
             Some(host) => request.push_str(&format!("Host: {} \r\n", host)),
-            None => panic!("no host"),
+            None => Err(Error::NoHostString)?,
         }
 
         request.push_str("Content-Type: application/json\r\n");
@@ -102,19 +103,19 @@ impl Request {
             }
         }
 
-        Ok(self.parse_response(data))
+        self.parse_response(data)
     }
 
-    fn parse_response(&self, data: Vec<u8>) -> Response {
+    fn parse_response(&self, data: Vec<u8>) -> Result<Response, Error> {
         if !data.starts_with(b"HTTP/1.1 ") {
-            panic!("could not parse")
+            return Err(Error::HttpParse);
         }
 
         let mut slice = data.as_slice();
         slice = &slice[b"HTTP/1.1 ".len()..];
 
         let (value, mut slice) = Self::slice_until_byte(slice, b' ');
-        let status: u16 = std::str::from_utf8(value).unwrap().parse().unwrap();
+        let status: u16 = std::str::from_utf8(value)?.parse()?;
         slice = Self::slice_until_byte(slice, b'\n').1;
 
         while slice[1] != b'\n' {
@@ -123,9 +124,9 @@ impl Request {
 
         slice = Self::slice_until_byte(slice, b'\n').1;
 
-        let body: Value = serde_json::from_slice(slice).unwrap();
+        let body: Value = serde_json::from_slice(slice)?;
 
-        Response { status, body }
+        Ok(Response { status, body })
     }
 
     fn slice_until_byte(data: &[u8], byte: u8) -> (&[u8], &[u8]) {
