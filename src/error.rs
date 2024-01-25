@@ -15,16 +15,15 @@ impl std::error::Error for Error {}
 
 impl Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let msg = match self {
-            Error::Seralize(e) => format!("Seralize error: {}", e),
-            Error::Resolve(e) => format!("Resolve error: {}", e),
-            Error::Utf8(e) => format!("Utf8 error: {}", e),
-            Error::ParseInt(e) => format!("ParseInt error: {}", e),
-            Error::ParseUrl(e) => format!("ParseUrl error: {}", e),
-            Error::NoHostString => "No host string".to_string(),
-            Error::HttpParse => "Http parse error".to_string(),
-        };
-        write!(f, "{}", msg)
+        match self {
+            Error::Seralize(e) => write!(f, "Seralize error: {}", e),
+            Error::Resolve(e) => write!(f, "Resolve error: {}", e),
+            Error::Utf8(e) => write!(f, "Utf8 error: {}", e),
+            Error::ParseInt(e) => write!(f, "ParseInt error: {}", e),
+            Error::ParseUrl(e) => write!(f, "ParseUrl error: {}", e),
+            Error::NoHostString => write!(f, "No host string"),
+            Error::HttpParse => write!(f, "Http parse error"),
+        }
     }
 }
 
