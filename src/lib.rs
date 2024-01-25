@@ -20,7 +20,7 @@ pub struct Response {
 }
 
 #[derive(Eq, PartialEq)]
-enum Method {
+pub enum Method {
     Get,
     Post,
 }
